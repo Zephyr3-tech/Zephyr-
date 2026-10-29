@@ -115,6 +115,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#4a9bf7}
 </head>
 <body>
 <div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -139,7 +140,7 @@ const rk=s=>s.replace(/\s+/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 const sha=async t=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const dk=()=>'ct:data:'+rk(user.matric);
 const list=k=>data[k]||[];
-const save=()=>LS.s(dk(),data);
+const save=()=>{LS.s(dk(),data);pushData()};
 const ses=LS.g('ct:session',null);if(ses)user=LS.g('ct:accounts',{})[ses.k]||null;
 if(user)data=LS.g(dk(),{});
 const initials=n=>n.trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';
@@ -305,7 +306,7 @@ const NOTICES=[{by:'Head of Department',t:'Departmental meeting',x:'All 300-leve
 let nShown=3;[180,95,20].forEach((m,i)=>NOTICES[i].at=Date.now()-m*6e4);
 setInterval(()=>{if(nShown<NOTICES.length){NOTICES[nShown].at=Date.now();nShown++;if(view==='notices')render()}},40000);
 const ago=t=>{const m=Math.round((Date.now()-t)/6e4);return m<1?'Just now':m<60?m+' min ago':Math.round(m/60)+' hr ago'};
-const noticesV=()=>`<div class="sec"><h2>Departmental Notice Board</h2><p><span class="tag g">Live</span> Sample feed: new notices arrive every 40 seconds while you are on this page.</p></div>${NOTICES.slice(0,nShown).reverse().map(n=>`<div class="item"><div><b>${esc(n.t)}</b><small>${esc(n.by)} · ${ago(n.at)}</small><small style="display:block;margin-top:4px;color:var(--tx)">${esc(n.x)}</small></div></div>`).join('')}`;
+const noticesV=()=>`<div class="sec"><h2>Departmental Notice Board</h2><p><span class="tag g">Live</span> Notices posted by staff.</p></div>${NOTICES.slice(0,nShown).reverse().map(n=>`<div class="item"><div><b>${esc(n.t)}</b><small>${esc(n.by)} · ${ago(n.at)}</small><small style="display:block;margin-top:4px;color:var(--tx)">${esc(n.x)}</small></div></div>`).join('')}`;
 // Sample groups: replace with real data.
 const SEEDG=[{id:'g1',t:'Robotics Programming revision',c:'CRE 324',w:'Saturdays 4pm',p:'ICT Hall',by:'Sample',n:3,dept:DEPTS[0]},{id:'g2',t:'Database Systems practice',c:'CRE 312',w:'Tuesdays 5pm',p:'Library',by:'Sample',n:4,dept:DEPTS[0]},{id:'g3',t:'Curriculum Development discussion',c:'VTE 304',w:'Wednesdays 4pm',p:'LT 2',by:'Sample',n:2,dept:DEPTS[1]},{id:'g4',t:'GST 321 exam prep',c:'GST 321',w:'Sundays 6pm',p:'Online',by:'Sample',n:6,dept:DEPTS[2]}];
 function groupsV(){const j=data.joined||{},gs=[...SEEDG,...list('groups').map((g,i)=>({...g,id:'u'+i,i,n:1,mine:1}))].filter(g=>g.mine||g.dept===user.dept||g.dept===DEPTS[2]);
@@ -346,7 +347,7 @@ function authHTML(){
   <label>Password<div class="pwf"><input name="pw" type="password" autocomplete="${s?'new-password':'current-password'}" maxlength="60" placeholder="${s?'At least 6 characters':''}" required><button type="button" data-eye aria-label="Show password">${ico('eye')}</button></div></label>
   <p class="err" id="aerr" role="alert" hidden></p><button class="btn gold" type="submit">${s?'Create account':'Log in'}</button></form>
   <p class="muted" style="text-align:center;margin:14px 0 0">${s?'Already have an account?':'New here?'} <button class="link" data-mode="${s?'login':'signup'}">${s?'Log in':'Create account'}</button></p></div>
-  <p class="muted" style="text-align:center;font-size:.85rem">Accounts are stored on this device only.</p></div>`;
+  <p class="muted" style="text-align:center;font-size:.85rem">${sb?'Your account is saved online and works on any device.':'Accounts are stored on this device only.'}</p></div>`;
 }
 function render(){
   const app=$('#app');
@@ -368,6 +369,7 @@ async function doAuth(f){
   const fd=new FormData(f),m=amode,matric=(fd.get('matric')||'').trim(),pw=fd.get('pw')||'',er=$('#aerr');
   const fail=t=>{er.textContent=t;er.hidden=false};er.hidden=true;
   if(!matric||!pw)return fail('Enter your matric number and password.');
+  if(sb)return cloudAuth(fd,m,matric,pw,fail);
   if(!window.crypto||!crypto.subtle)return fail('This browser cannot secure passwords. Open the page in a current browser.');
   const k=rk(matric),accs=LS.g('ct:accounts',{}),h=await sha(k+'|'+pw);
   if(m==='signup'){
@@ -391,7 +393,7 @@ document.addEventListener('click',e=>{
   const t=e.target.closest('[data-go],[data-menu],[data-out],[data-del],[data-mode],[data-ask],[data-open],[data-back],[data-goback],[data-eye],[data-course],[data-cback],[data-delnote],[data-delcourse],[data-tgl],[data-rem],[data-today],[data-mv],[data-chk],[data-pm],[data-join],[data-lf]');if(!t)return;
   if(t.dataset.go)go(t.dataset.go);
   else if('menu' in t.dataset)document.body.classList.toggle('menu');
-  else if('out' in t.dataset){user=null;data={};fD=null;fC='';fDay='';LS.r('ct:session');document.body.classList.remove('menu');amode='login';showAuth=false;stack=[];view='home';cur=null;render()}
+  else if('out' in t.dataset){user=null;data={};fD=null;fC='';fDay='';LS.r('ct:session');if(sb)sb.auth.signOut();document.body.classList.remove('menu');amode='login';showAuth=false;stack=[];view='home';cur=null;render()}
   else if(t.dataset.open)navTo(()=>{amode=t.dataset.open;showAuth=true})
   else if('back' in t.dataset)back(()=>{showAuth=false})
   else if('goback' in t.dataset)back()
@@ -412,6 +414,59 @@ document.addEventListener('click',e=>{
   else if('lf' in t.dataset){lf=t.dataset.lf;render()}
   else if(t.dataset.del){const [k,i]=t.dataset.del.split(':');data[k]=list(k).filter((_,j)=>j!==+i);save();render()}
 });
+
+/* ===== Cloud (Supabase). Paste your project values below. ===== */
+const SUPABASE_URL='YOUR_SUPABASE_URL',SUPABASE_KEY='YOUR_SUPABASE_ANON_KEY';
+const sb=(window.supabase&&!SUPABASE_URL.startsWith('YOUR'))?supabase.createClient(SUPABASE_URL,SUPABASE_KEY):null;
+let pushT;
+const pushData=()=>{if(!sb||!user||!user.id)return;clearTimeout(pushT);pushT=setTimeout(()=>sb.from('user_data').upsert({user_id:user.id,data,updated_at:new Date().toISOString()}).then(()=>{}),800)};
+const em=m=>rk(m).toLowerCase()+'@campustrack.app';
+async function loadShared(){
+  const [e,n]=await Promise.all([sb.from('events').select('*').order('date'),sb.from('notices').select('*').order('created_at',{ascending:false})]);
+  if(e.data&&e.data.length){EVTS.length=0;e.data.forEach(r=>EVTS.push({id:'c'+r.id,k:r.kind||'Event',i:r.icon||'📅',t:r.title,date:r.date,tm:String(r.time).slice(0,5),v:r.venue||'TBA',x:r.details||''}))}
+  if(n.data&&n.data.length){NOTICES.length=0;n.data.slice().reverse().forEach(r=>NOTICES.push({by:r.by_name,t:r.title,x:r.body,at:new Date(r.created_at).getTime()}));nShown=NOTICES.length}
+}
+async function enter(session){
+  const {data:p}=await sb.from('profiles').select('*').eq('id',session.user.id).single();
+  if(!p)return false;
+  user={id:p.id,name:p.name,matric:p.matric,level:p.level,dept:p.dept,role:p.role};
+  const {data:d}=await sb.from('user_data').select('data').eq('user_id',p.id).maybeSingle();
+  data=(d&&d.data)||LS.g(dk(),{});LS.s(dk(),data);
+  await loadShared();return true;
+}
+async function cloudAuth(fd,m,matric,pw,fail){
+  const email=em(matric);let r;
+  if(m==='signup'){
+    const name=(fd.get('name')||'').trim();
+    if(!name)return fail('Enter your full name.');
+    if(pw.length<6)return fail('Use a password of at least 6 characters.');
+    r=await sb.auth.signUp({email,password:pw,options:{data:{name,matric:matric.toUpperCase(),level:fd.get('level'),dept:fd.get('dept')}}});
+    if(r.error)return fail(/registered/i.test(r.error.message)?'An account with this number already exists. Log in instead.':r.error.message);
+    if(!r.data.session)return fail('Account created. Turn off "Confirm email" in Supabase, then log in.');
+  }else{
+    r=await sb.auth.signInWithPassword({email,password:pw});
+    if(r.error)return fail('Wrong matric number or password.');
+  }
+  if(!(await enter(r.data.session)))return fail('Could not load your profile. Try again.');
+  view='home';stack=[];showAuth=false;render();
+}
+const adminForm=()=>user&&user.role==='admin'&&sb?`<form class="card" data-adm style="display:grid;gap:10px;margin-top:16px"><h3 style="margin:0">Admin: post to everyone</h3><label>Type<select name="kind"><option value="notice">Notice</option><option value="event">Event</option></select></label><label>Title<input name="title" required maxlength="100"></label><label>Details<input name="body" required maxlength="400"></label><label>Venue (events)<input name="venue" maxlength="80"></label><label>Date (events)<input name="date" type="date"></label><label>Time (events)<input name="time" type="time"></label><button class="btn gold" type="submit">Post</button></form>`:'';
+const _nv=noticesV;VIEWS.notices=()=>_nv()+adminForm();
+document.addEventListener('submit',async e=>{
+  const f=e.target;if(!('adm' in f.dataset)||!sb)return;
+  const d=new FormData(f);let r;
+  if(d.get('kind')==='event'){
+    if(!d.get('date')||!d.get('time'))return alert('Add a date and time for the event.');
+    r=await sb.from('events').insert({kind:'Event',icon:'📅',title:d.get('title'),date:d.get('date'),time:d.get('time'),venue:d.get('venue')||'TBA',details:d.get('body'),created_by:user.id});
+  }else r=await sb.from('notices').insert({by_name:user.name,title:d.get('title'),body:d.get('body')});
+  if(r.error)return alert(r.error.message);
+  await loadShared();render();
+});
+if(sb){
+  sb.auth.getSession().then(async({data:{session}})=>{if(session&&await enter(session))render()}).catch(()=>{});
+  setInterval(async()=>{if(user&&!document.querySelector('input:focus,textarea:focus,select:focus')&&(view==='notices'||view==='events')){await loadShared();render()}},60000);
+}
+/* ===== end cloud ===== */
 document.addEventListener('submit',e=>{
   e.preventDefault();const f=e.target;
   if(f.id==='af')doAuth(f);
